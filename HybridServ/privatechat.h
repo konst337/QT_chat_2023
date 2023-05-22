@@ -27,18 +27,19 @@ public:
 private:
     Ui::PrivateChat *ui;
 
-    QTcpSocket *sock;
-        //server
-    QMap<int, QTcpSocket*> SClients;
-    int counter;
-    QTcpServer *mTcpServer;
-    int server_status;
-    QString ip;
+    QTcpSocket *sock = 0;
+    QString myIp;
+    QString nickname;
+    bool SOCKET_STATE = false;
+    bool SERVER_STATE = false;
+    qint8 INIT = 9;
+    qint8 PRIVATE = 7;
+
 
 signals:
     void secondWindow();
-
     void test1(QString nick, QString message, qint8 type);
+
 private slots:
     void on_butt_public_clicked();
 
@@ -48,17 +49,12 @@ private slots:
     void Sdisconnected();
     void Sconnected();
 
-    //server
-    void slotNewConnection();
-    void slotClientDisconnected();
-    void slotServerReadMany();
+    void getVars(QString nick, QString message, qint8 type);
+
 
     void on_butt_connect_clicked();
-
-    void getVars(QString vars, qint8 type);
-
-
-
+    void on_butt_sendMessage1_clicked();
+    void on_line_message_returnPressed();
 };
 
 #endif // PRIVATECHAT_H

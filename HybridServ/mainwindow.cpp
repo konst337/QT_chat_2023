@@ -1,14 +1,8 @@
 #include "mainwindow.h"
 #include "qobjectdefs.h"
 #include "ui_mainwindow.h"
-int port = 7755;
-QString nickname;
-qint8 USUAL_MESSAGE = 1;
-qint8 PERSON_ONLINE = 2;
-qint8 WHO_IS_ONLINE = 3;
-qint8 SETUP = 0;
-qint8 EXIT = 4;
-qint8 CHAT = 5;
+
+
 
 QHostAddress *myIp = new QHostAddress();
 
@@ -17,13 +11,15 @@ MainWindow::MainWindow(QWidget *parent)
     , ui(new Ui::MainWindow)
 {
     ui->setupUi(this);
+
     pChat = new PrivateChat();
     connect(pChat, &PrivateChat::secondWindow, this, &MainWindow::showWindow);
 
     connect(pChat, SIGNAL(test1(QString,QString,qint8)), this, SLOT(sendSome(QString,QString,qint8)));
 //    connect(pChat, SLOT(getVars(QString)), this, SIGNAL(sendVars(QString)));
-    connect(this, SIGNAL(sendVars(QString, qint8)), pChat, SLOT(getVars(QString, qint8)));
-}
+    connect(this, SIGNAL(sendVars(QString,QString, qint8)), pChat, SLOT(getVars(QString,QString, qint8)));
+
+ }
 
 
 void MainWindow::showWindow()
@@ -35,7 +31,7 @@ void MainWindow::showWindow()
 
 MainWindow::~MainWindow()
 {
-    sendSome(nickname, "", qint8(EXIT));
+    sendSome(nickname, "", qint8(UDP_EXIT));
     delete ui;
 }
 
@@ -62,7 +58,7 @@ void MainWindow::readSome()
     QString text;
     in >> text;
 
-    if (type == USUAL_MESSAGE)
+    if (type == UDP_USUAL_MESSAGE)
     {
         if (myIp.isEqual(*address))
         {
@@ -71,36 +67,29 @@ void MainWindow::readSome()
       QString buff = ui->textEdit->toPlainText();
       ui->textEdit->setText(buff + '\n' + nick + ": " + text);
     }
-    else if (type == PERSON_ONLINE && !myIp.isEqual(*address))
+    else if (type == UDP_PERSON_ONLINE && !myIp.isEqual(*address))
     {
         QString buff = ui->textEdit->toPlainText();
         QHostAddress tempA;
         tempA.setAddress(address->toIPv4Address());
         ui->textEdit->setText(buff + '\n' + "Пользователь " + nick + " c адресом: " + tempA.toString() + " в сети");
     }
-    else if (type == WHO_IS_ONLINE && !myIp.isEqual(*address))
+    else if (type == UDP_WHO_IS_ONLINE && !myIp.isEqual(*address))
     {
-        sendSome(nickname,"",qint8(PERSON_ONLINE));
+        sendSome(nickname,"",qint8(UDP_PERSON_ONLINE));
     }
-    else if (type == SETUP && myIp.isNull())
+    else if (type == UDP_SETUP && myIp.isNull())
     {
        QString buff = ui->textEdit->toPlainText();
        myIp.setAddress(address->toIPv4Address());
        ui->textEdit->setText("Вы в сети! Ваш IP: " + myIp.toString());
     }
-    else if (type == EXIT)
+    else if (type == UDP_EXIT)
     {
        QString buff = ui->textEdit->toPlainText();
        QHostAddress tempA;
        tempA.setAddress(address->toIPv4Address());
        ui->textEdit->setText(buff + '\n' + "Пользователь " + nick + " c адресом: " + tempA.toString() + " вышел из сети");
-    }
-    else if (type == CHAT)
-    {
-       pChat->setGeometry(this->geometry());
-       pChat->show();
-       emit sendVars(text, CHAT);
-       this->close();
     }
 
 }
@@ -115,94 +104,92 @@ void MainWindow::sendSome(QString nick, QString message, qint8 type)
     out << message;
     out.device()->seek(qint64(0));
     out << qint64(data.size() - sizeof(qint64));
-    usock->writeDatagram(data, QHostAddress::Broadcast, port);
+
+    if (type == TCP_PRIVATE_MESSAGE)
+    {
+       SClients.first()->write(data);
+    }
+    else
+    {
+       usock->writeDatagram(data, QHostAddress::Broadcast, port);
+    }
+
 //    ui->textEdit->setText(ui->textEdit->toPlainText() + '\n' + "Отправлен запрос " + QString::number(type));
 }
 
 
-void MainWindow::on_butt_hostServ_clicked()
+void MainWindow::on_butt_hostServ_clicked() // Host server
 {
     mTcpServer = new QTcpServer(this);
     counter = 0;
-
     connect(mTcpServer, &QTcpServer::newConnection,this, &MainWindow::slotNewConnection);
     if(!mTcpServer->listen(QHostAddress::Any, 25252))
     {
         qDebug() << "SERVER IS NOT STARTED!";
     }
-    else {
+    else
+    {
         qDebug() << "SERVER IS STARTED!";
         server_status = 1;
+        ui->butt_hostServ->setStyleSheet(ui->butt_hostServ->styleSheet() + "background-color: rgb(85, 170, 255); color: white;");
+        ui->butt_hostServ->setEnabled(false);
+        ui->butt_hostServ->setText("TCP оnline");
     }
-
 }
 
 void MainWindow::slotNewConnection()
 {
+
     if(server_status == 1)
     {
         counter++;
         QTcpSocket *temp = mTcpServer->nextPendingConnection();
+        QMessageBox msg;
+        msg.setText(temp->peerAddress().toString()); // Подтверждение подключения
+        msg.exec();
         int id = (int)temp->socketDescriptor();
         SClients[id] = temp;
         qDebug() << "AMOUNT OF USERS:" << counter << Qt::endl;
         connect(temp, &QTcpSocket::readyRead, this, &MainWindow::slotServerReadMany);
         connect(temp, &QTcpSocket::disconnected, this, &MainWindow::slotClientDisconnected);
+//        QMessageBox msg;
+        msg.setText("Новое подключение!");
+        msg.exec();
 
+//        emit sendVars(nick,text,type);
     }
 }
 
-void MainWindow::slotServerReadMany() //serv
+void MainWindow::slotServerReadMany() //serv read
 {
     QTcpSocket *temp = (QTcpSocket*)sender();
-    //    int id = (int)temp->socketDescriptor();
 
-    QByteArray buffer, buffer1;
+    QByteArray datagram;
+    datagram.resize(temp->readBufferSize());
+    datagram = temp->readAll();
 
-    while(temp->bytesAvailable() > 0) //canReadLine
-    {
-        buffer1 = temp->readAll();
-        buffer.append(buffer1);
-    }
+    QDataStream in(&datagram, QIODevice::ReadOnly);
 
-    if (buffer == "1")
-    {
-        temp->write("ping 1");
+    qint64 size = -1;
+    if(in.device()->size() > sizeof(qint64)) {
+        in >> size;
+    } else return;
+    if (in.device()->size() - sizeof(qint64) < size) return;
 
-    }
-    if (buffer == "2")
-    {
-        temp->write("ping 2");
+    qint8 type = 0;
+    in >> type;
+    QString nick;
+    in >> nick;
+    QString text;
+    in >> text;
 
-    }
-
-    ui->textEdit->setText(ui->textEdit->toPlainText() + '\n' + buffer);
+    emit sendVars(nick,text,type);
 }
 
 
-void MainWindow::on_butt_sendMessage_clicked()
-{
-    if (usock)
-    {
-        QString text = ui->lineEdit->text();
-        sendSome(nickname, text, qint8(USUAL_MESSAGE));
-    }
-
-//    QString writeBuf = ui->lineEdit->text();
-//    if (sock)
-//    {
-//        sock->write(writeBuf.toStdString().c_str());
-//    }
-//    else
-//    {
-//        SClients.first()->write(writeBuf.toStdString().c_str());
-//    }
-    ui->lineEdit->setText("");
-}
 
 void MainWindow::slotClientDisconnected()
 {
-
     if(server_status==1)
     {
 
@@ -217,99 +204,31 @@ void MainWindow::slotClientDisconnected()
 }
 
 
-void MainWindow::on_butt_connServ_clicked()
-{
-    sock = new QTcpSocket();
-    sock->connectToHost("127.0.0.1",25252);
-    sock->open(QIODevice::ReadWrite);
-    connect(sock, SIGNAL(readyRead()),this,SLOT(readData()));
-    connect(sock, SIGNAL(connected()), SLOT(Sconnected()));
-    connect(sock, SIGNAL(disconnected()), SLOT(Sdisconnected()));
-    connect(sock, SIGNAL(errorOccurred(QAbstractSocket::SocketError)), SLOT(error()));
-
-    QMessageBox msg;
-
-}
-
-void MainWindow::Sconnected()
-{
-    QMessageBox msg;
-    msg.setText("Connected to server!");
-    msg.exec();
-
-}
-
-void MainWindow::Sdisconnected()
-{
-    sock->close();
-    QMessageBox msg;
-    msg.setText("Disconnected from server!");
-    msg.exec();
-}
-
-void MainWindow::error()
-{
-    QMessageBox msg;
-    msg.setText(sock->errorString());
-    msg.exec();
-}
-
-void MainWindow::readData() // client
-{
-    if (sock)
-    {
-        if(sock->isOpen())
-        {
-            QString message;
-
-            while(sock->bytesAvailable())
-            {
-                QString buffer = sock->readAll();
-                message.append(buffer);
-            }
-            ui->textEdit->setText(ui->textEdit->toPlainText() + '\n' + message);
-            message.clear();
-        }
-    }
-
-}
-
-
-
 void MainWindow::on_nick_textChanged(const QString &arg1)
 {
-
     nickname = ui->nick->text();
-
-}
-
-
-void MainWindow::on_nick_textEdited(const QString &arg1)
-{
-
-
 }
 
 
 void MainWindow::on_nick_returnPressed()
 {
- sendSome(nickname,"",qint8(WHO_IS_ONLINE));
+    sendSome(nickname,"",qint8(UDP_WHO_IS_ONLINE));
 }
 
 
 void MainWindow::on_butt_hostServ_2_clicked() // go online
 {
- if (!usock){
+ if (!usock)
+ {
     usock = new QUdpSocket(this);
     usock->bind(QHostAddress::Any, port);
     connect(usock, SIGNAL(readyRead()), SLOT(readSome()));
-    sendSome(nickname, "", qint8(SETUP));
-    sendSome(nickname, "", qint8(PERSON_ONLINE));
-    sendSome(nickname, "", qint8(WHO_IS_ONLINE));
+    sendSome(nickname, "", qint8(UDP_SETUP));
+    sendSome(nickname, "", qint8(UDP_PERSON_ONLINE));
+    sendSome(nickname, "", qint8(UDP_WHO_IS_ONLINE));
     ui->nick->setReadOnly(true);
 
     ui->butt_hostServ_2->setStyleSheet(ui->butt_hostServ_2->styleSheet() + "background-color: rgb(85, 170, 255); color: white;");
-    ui->butt_hostServ_2->setEnabled(false);
     ui->butt_hostServ_2->setText("Online");
  }
 }
@@ -317,22 +236,26 @@ void MainWindow::on_butt_hostServ_2_clicked() // go online
 
 void MainWindow::on_lineEdit_returnPressed()
 {
+ ui->butt_sendMessage->click();
+}
+
+void MainWindow::on_butt_sendMessage_clicked()
+{
     if (usock)
     {
-        QString text = ui->lineEdit->text();
-        sendSome(nickname, text, qint8(USUAL_MESSAGE));
+    QString text = ui->lineEdit->text();
+    sendSome(nickname, text, qint8(UDP_USUAL_MESSAGE));
     }
     ui->lineEdit->setText("");
 }
 
 
+
 void MainWindow::on_butt_hostServ_3_clicked()
 {
-    emit sendVars(myIp.toString(), 8);
-
+    emit sendVars(nickname,myIp.toString(), 9);
     pChat->setGeometry(this->geometry());
     pChat->show(); // Показываем окно
     this->close();
-
 }
 

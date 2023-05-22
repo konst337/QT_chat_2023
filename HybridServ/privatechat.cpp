@@ -6,25 +6,26 @@ PrivateChat::PrivateChat(QWidget *parent) :
     ui(new Ui::PrivateChat)
 {
     ui->setupUi(this);
-
-
-
 }
 
 PrivateChat::~PrivateChat()
 {
     delete ui;
-
 }
 
-void PrivateChat::getVars(QString vars, qint8 type)
+void PrivateChat::getVars(QString nick, QString text, qint8 type)
 {
-   ip = vars;
-   ui->textEdit1->setText(ip);
-   if (type == 5)
-   {
-        ui->textEdit1->setText("connecting...");
-   }
+    if (type == INIT)
+    {
+        nickname = nick;
+        myIp = text;
+    }
+    else
+    {
+        QString buff = ui->textEdit1->toPlainText();
+        ui->textEdit1->setText(buff + '\n' + nick + ": " + text);
+    }
+
 }
 
 
@@ -35,118 +36,71 @@ void PrivateChat::on_butt_public_clicked()
 }
 
 
-void PrivateChat::on_butt_connect_clicked()
+void PrivateChat::on_butt_connect_clicked() // Подключение клиентом
 {
-    mTcpServer = new QTcpServer(this);
-    counter = 0;
-
-    connect(mTcpServer, &QTcpServer::newConnection,this, &PrivateChat::slotNewConnection);
-    if(!mTcpServer->listen(QHostAddress::Any, 25252)) // ИЗМЕНИТЬ вфовщвофцвцфвоцфвцфовцфвдцводцвоводфцво
+    if (!sock)
     {
-        qDebug() << "SERVER IS NOT STARTED!";
+        sock = new QTcpSocket();
+        connect(sock, SIGNAL(readyRead()),this,SLOT(readData()));
+        connect(sock, SIGNAL(connected()), SLOT(Sconnected()));
+        connect(sock, SIGNAL(disconnected()), SLOT(Sdisconnected()));
+        connect(sock, SIGNAL(errorOccurred(QAbstractSocket::SocketError)), SLOT(error()));
     }
-    else {
-        qDebug() << "SERVER IS STARTED!";
-        server_status = 1;
-
-        QString buff = ui->textEdit1->toPlainText();
-        ui->textEdit1->setText(buff + '\n' + "Запрос на секретный чат отправлен клиенту: ");
-    }
-
-    emit test1("lol",ui->line_ip->text(),5);
-
-}
-
-void PrivateChat::slotNewConnection()
-{
-    if(server_status == 1)
+    if (!SOCKET_STATE)
     {
-        counter++;
-        QTcpSocket *temp = mTcpServer->nextPendingConnection();
-        int id = (int)temp->socketDescriptor();
-        SClients[id] = temp;
-        qDebug() << "AMOUNT OF USERS:" << counter << Qt::endl;
-        connect(temp, &QTcpSocket::readyRead, this, &PrivateChat::slotServerReadMany);
-        connect(temp, &QTcpSocket::disconnected, this, &PrivateChat::slotClientDisconnected);
-
+        QString ip = ui->line_ip->text();
+        sock->connectToHost(ip, 25252);
+        sock->open(QIODevice::ReadWrite);
     }
-}
-
-void PrivateChat::slotServerReadMany() //serv
-{
-    QTcpSocket *temp = (QTcpSocket*)sender();
-    //    int id = (int)temp->socketDescriptor();
-
-    QByteArray buffer, buffer1;
-
-    while(temp->bytesAvailable() > 0) //canReadLine
+    else
     {
-        buffer1 = temp->readAll();
-        buffer.append(buffer1);
-    }
-
-    if (buffer == "1")
-    {
-        temp->write("ping 1");
-
-    }
-    if (buffer == "2")
-    {
-        temp->write("ping 2");
-
-    }
-
-    ui->textEdit1->setText(ui->textEdit1->toPlainText() + '\n' + buffer);
-}
-
-void PrivateChat::slotClientDisconnected()
-{
-
-    if(server_status==1)
-    {
-        QTcpSocket *temp = (QTcpSocket*)sender();
-        //        int id = (int)temp->socketDescriptor();
-        counter --;
-        qDebug() << "AMOUNT OF USERS:" << counter << Qt::endl;
-        qDebug() << "USER HAS BEEN DISCONNECTED!";
-        temp->write("disconneted");
-        temp->close();
+        sock->disconnectFromHost();
     }
 }
 
 void PrivateChat::Sconnected()
 {
-    QMessageBox msg;
-    msg.setText("Connected to server!");
-    msg.exec();
-
+    SOCKET_STATE = true;
+    ui->textEdit1->setText(ui->textEdit1->toPlainText() + '\n' + "Connected to server!");
+    ui->butt_connect->setStyleSheet(ui->butt_connect->styleSheet() + "background-color: rgb(85, 170, 255); color: white;");
+    ui->line_ip->setEnabled(false);
+    ui->butt_connect->setText("оnline");
 }
 
 void PrivateChat::Sdisconnected()
 {
     sock->close();
-    QMessageBox msg;
-    msg.setText("Disconnected from server!");
-    msg.exec();
+    SOCKET_STATE = false;
+    ui->textEdit1->setText(ui->textEdit1->toPlainText() + '\n' + "Disconnected from server!");
+    ui->butt_connect->setStyleSheet("background-color: rgb(193, 193, 193); color: rgb(0, 0, 0); border-radius: 10px;");
+    ui->line_ip->setEnabled(true);
+    ui->butt_connect->setText("оnline");
 }
 
-void PrivateChat::readData() // client
+void PrivateChat::readData() // Чтение на стороне клиента
 {
-    if (sock)
-    {
-        if(sock->isOpen())
-        {
-            QString message;
+    QTcpSocket *temp = (QTcpSocket*)sender();
+    QByteArray datagram;
+    QDataStream in(&datagram, QIODevice::ReadOnly);
 
-            while(sock->bytesAvailable())
-            {
-                QString buffer = sock->readAll();
-                message.append(buffer);
-            }
-            ui->textEdit1->setText(ui->textEdit1->toPlainText() + '\n' + message);
-            message.clear();
-        }
-    }
+    datagram.resize(temp->readBufferSize());
+    datagram = temp->readAll();
+
+    qint64 size = -1;
+    if(in.device()->size() > sizeof(qint64)) {
+        in >> size;
+    } else return;
+    if (in.device()->size() - sizeof(qint64) < size) return;
+
+    qint8 type = 0;
+    in >> type;
+    QString nick;
+    in >> nick;
+    QString text;
+    in >> text;
+
+    QString buff = ui->textEdit1->toPlainText();
+    ui->textEdit1->setText(buff + '\n' + nick + ": " + text);
 
 }
 
@@ -157,4 +111,33 @@ void PrivateChat::error()
     msg.exec();
 }
 
+void PrivateChat::on_butt_sendMessage1_clicked() // Отправка личных сообщений
+{
+    QString buff = ui->textEdit1->toPlainText();
+    QString writeBuf = ui->line_message->text();
+    if (SOCKET_STATE)
+    {
+        QByteArray data;
+        QDataStream out(&data, QIODevice::WriteOnly);
+        out << qint64(0);
+        out << qint8(PRIVATE);
+        out << nickname;
+        out << writeBuf;
+        out.device()->seek(qint64(0));
+        out << qint64(data.size() - sizeof(qint64));
+        sock->write(data);
+    }
+    else
+    {
+        emit test1(nickname, writeBuf, PRIVATE);
+    }
+    ui->line_message->setText("");
+    ui->textEdit1->setText(buff + '\n' + "Вы" + ": " + writeBuf);
+}
+
+
+void PrivateChat::on_line_message_returnPressed()
+{
+    ui->butt_sendMessage1->click();
+}
 
