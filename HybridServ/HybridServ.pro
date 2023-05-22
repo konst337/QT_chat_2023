@@ -10,13 +10,16 @@ CONFIG += c++17
 
 SOURCES += \
     main.cpp \
-    mainwindow.cpp
+    mainwindow.cpp \
+    privatechat.cpp
 
 HEADERS += \
-    mainwindow.h
+    mainwindow.h \
+    privatechat.h
 
 FORMS += \
-    mainwindow.ui
+    mainwindow.ui \
+    privatechat.ui
 
 # Default rules for deployment.
 qnx: target.path = /tmp/$${TARGET}/bin
