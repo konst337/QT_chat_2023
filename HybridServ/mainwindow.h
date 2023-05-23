@@ -2,9 +2,7 @@
 #define MAINWINDOW_H
 
 #include <QMainWindow>
-
 #include <QUdpSocket>
-
 #include <QMessageBox>
 #include <QDebug>
 #include <QString>
@@ -28,18 +26,11 @@ signals:
     void sendVars(QString nick,QString message, qint8 type);
 
 private slots:
-    void on_butt_hostServ_clicked();
-
     void showWindow();
 
     //udp
     void readSome();
     void sendSome(QString nick, QString message, qint8 type);
-
-    //server
-    void slotNewConnection();
-    void slotClientDisconnected();
-    void slotServerReadMany();
 
     void on_nick_textChanged(const QString &arg1);
 
@@ -55,10 +46,6 @@ private:
 
     QUdpSocket *usock = 0;
     QHostAddress myIp;
-    QMap<int, QTcpSocket*> SClients;
-    QTcpServer *mTcpServer;
-    int counter;
-    int server_status;
 
     int port = 7755;
     QString nickname;
@@ -68,11 +55,7 @@ private:
     qint8 UDP_PERSON_ONLINE = 2;
     qint8 UDP_WHO_IS_ONLINE = 3;
     qint8 UDP_EXIT = 4;
-    //TCP message events
-    qint8 TCP_PRIVATE_MESSAGE = 7;
-    // доделать
-    qint8 TCP_NEW_CONN = 8; // SERVER_STATE = true;
-    qint8 TCP_DISCONNECT = 9;
+
 
 
 };
