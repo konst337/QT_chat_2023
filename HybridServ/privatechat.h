@@ -32,20 +32,16 @@ private:
     QString myIp;
     QString nickname;
 
-
     //TCP message events
-    qint8 INIT = 9;
     qint8 PRIVATE = 7;
-//    qint8 TCP_PRIVATE_MESSAGE = 7;
-    // доделать
-//    qint8 TCP_NEW_CONN = 8; // SERVER_STATE = true;
-//    qint8 TCP_DISCONNECT = 9;
+    qint8 INIT = 9;
+    qint8 TCP_ACCETP = 11;
+    qint8 TCP_REJECT = 12;
 
     // SERVER
     QMap<int, QTcpSocket*> SClients;
     QTcpServer *mTcpServer;
     int counter;
-
 
 signals:
     void secondWindow();
@@ -71,6 +67,8 @@ private slots:
     void on_butt_sendMessage1_clicked();
     void on_line_message_returnPressed();
     void on_line_ip_returnPressed();
+
+    QByteArray prepareData(QString var1, QString var2, qint8 type);
 };
 
 #endif // PRIVATECHAT_H

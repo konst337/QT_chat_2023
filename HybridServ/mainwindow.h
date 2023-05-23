@@ -56,7 +56,5 @@ private:
     qint8 UDP_WHO_IS_ONLINE = 3;
     qint8 UDP_EXIT = 4;
 
-
-
 };
 #endif // MAINWINDOW_H

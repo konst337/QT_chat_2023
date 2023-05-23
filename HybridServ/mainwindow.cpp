@@ -136,7 +136,7 @@ void MainWindow::on_butt_hostServ_2_clicked() // go online
 
 void MainWindow::on_lineEdit_returnPressed()
 {
- ui->butt_hostServ_3->click();
+    ui->butt_sendMessage->click();
 }
 
 void MainWindow::on_butt_sendMessage_clicked()
