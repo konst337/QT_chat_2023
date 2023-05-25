@@ -6,6 +6,8 @@ PrivateChat::PrivateChat(QWidget *parent) :
     ui(new Ui::PrivateChat)
 {
     ui->setupUi(this);
+    PrivateChat::setWindowTitle("Chat");
+
     // Создание TCP сокета
     sock = new QTcpSocket();
     connect(sock, SIGNAL(readyRead()),this,SLOT(readData()));
@@ -13,13 +15,12 @@ PrivateChat::PrivateChat(QWidget *parent) :
     connect(sock, SIGNAL(disconnected()), SLOT(Sdisconnected()));
     connect(sock, SIGNAL(errorOccurred(QAbstractSocket::SocketError)), SLOT(error()));
 
-
     // Запуск TCP сервера
     mTcpServer = new QTcpServer(this);
     counter = 0;
     connect(mTcpServer, &QTcpServer::newConnection,this, &PrivateChat::slotNewConnection);
 
-    if(!mTcpServer->listen(QHostAddress::Any, 25252))
+    if(!mTcpServer->listen(QHostAddress::Any, PORT))
     {
         qDebug() << "SERVER IS NOT STARTED!";
     }
@@ -35,7 +36,7 @@ PrivateChat::~PrivateChat()
 {
     delete ui;
 
-    foreach(int i, SClients.keys())
+    foreach(int i, SClients.keys()) // закрытие соединений при закрытии программы
     {
         QTextStream os(SClients[i]);
         SClients[i]->close();
@@ -43,25 +44,18 @@ PrivateChat::~PrivateChat()
     }
     SERVER_STATE = false;
     mTcpServer->close();
-
 }
 
-void PrivateChat::getVars(QString nick, QString text, qint8 type)
+void PrivateChat::getVars(QString nick, QString text, qint8 type) // функция для получения информации из первого окна
 {
-    if (type == INIT)
+    if (type == INIT) // инициализация пользовательской информации
     {
         nickname = nick;
         myIp = text;
     }
-//    else
-//    {
-//        QString buff = ui->textEdit1->toPlainText();
-//        ui->textEdit1->setText(buff + '\n' + nick + ": " + text);
-//    }
-    int a = 0;
 }
 
-QByteArray PrivateChat::prepareData(QString var1, QString var2, qint8 type)
+QByteArray PrivateChat::prepareData(QString var1, QString var2, qint8 type) // функция для упаковки переменных для передачи по TCP
 {
     QByteArray data;
     QDataStream out(&data, QIODevice::WriteOnly);
@@ -76,9 +70,9 @@ QByteArray PrivateChat::prepareData(QString var1, QString var2, qint8 type)
 }
 
 
-void PrivateChat::slotNewConnection() // server
+void PrivateChat::slotNewConnection() // Слот обработки новых подключений к серверу
 {
-    if(SERVER_STATE and !SClients.size())
+    if(SERVER_STATE and !SClients.size()) // если сервер запущен и нет текущих подключений - обработка подключения
     {
         QTcpSocket *temp = mTcpServer->nextPendingConnection();
         QHostAddress tempIp;
@@ -87,7 +81,8 @@ void PrivateChat::slotNewConnection() // server
         QString mText = "Клиент с адресом ";
         mText += tempIp.toString();
         mText += " отправил запрос на подключение. Принять?";
-        QMessageBox::StandardButton reply = QMessageBox::question(this, "Запрос на подключение", mText, QMessageBox::Yes | QMessageBox::No);
+        QMessageBox::StandardButton reply = QMessageBox::question(this, "Запрос на подключение", mText,
+        QMessageBox::Yes | QMessageBox::No);
         if (reply == QMessageBox::Yes)
         {
             int id = (int)temp->socketDescriptor();
@@ -102,28 +97,26 @@ void PrivateChat::slotNewConnection() // server
             ui->line_ip->setText(tempIp.toString());
             ui->textEdit1->setText(ui->textEdit1->toPlainText() + '\n' + "Соединение с пользователем установлено!");
             ui->butt_connect->setStyleSheet(ui->butt_connect->styleSheet() + "background-color: rgb(85, 170, 255); color: white;");
-            ui->butt_connect->setText("оnline");
+            ui->butt_connect->setText("Online");
             ui->line_ip->setEnabled(false);
-            qDebug() << "yes";
         }
         else
         {
-            temp->write(prepareData(nickname,myIp,TCP_REJECT)); // Отправка отключения клиенту
+            temp->write(prepareData(nickname,myIp,TCP_REJECT)); // Отправка отклонения клиенту
             temp->disconnectFromHost();
-            qDebug() << "no";
         }
     }
 }
 
-void PrivateChat::slotServerReadMany() //serv read
+void PrivateChat::slotServerReadMany() // Чтение на стороне сервера
 {
     QTcpSocket *temp = (QTcpSocket*)sender();
 
-    QByteArray datagram;
-    datagram.resize(temp->readBufferSize());
-    datagram = temp->readAll();
+    QByteArray buffer;
+    buffer.resize(temp->readBufferSize());
+    buffer = temp->readAll();
 
-    QDataStream in(&datagram, QIODevice::ReadOnly);
+    QDataStream in(&buffer, QIODevice::ReadOnly);
 
     qint64 size = -1;
     if(in.device()->size() > sizeof(qint64)) {
@@ -143,13 +136,11 @@ void PrivateChat::slotServerReadMany() //serv read
 
 }
 
-void PrivateChat::slotClientDisconnected() // server
+void PrivateChat::slotClientDisconnected() // обработка отключений клиентов
 {
     if(SERVER_STATE)
     {
-
         QTcpSocket *temp = (QTcpSocket*)sender();
-        //        int id = (int)temp->socketDescriptor();
         counter --;
         qDebug() << "AMOUNT OF USERS:" << counter << Qt::endl;
         qDebug() << "USER HAS BEEN DISCONNECTED!";
@@ -166,19 +157,19 @@ void PrivateChat::slotClientDisconnected() // server
 }
 
 
-void PrivateChat::on_butt_public_clicked()
+void PrivateChat::on_butt_public_clicked() // кнопка возврата в первое окно
 {
     emit secondWindow();
     this->close();
 }
 
 
-void PrivateChat::on_butt_connect_clicked() // Подключение клиентом
+void PrivateChat::on_butt_connect_clicked() // кнопка подключения/отключения из личного чата
 {
     if (!SOCKET_STATE && !SClients.size()) // подключаемся клиентом
     {
         QString ip = ui->line_ip->text();
-        sock->connectToHost(ip, 25252);
+        sock->connectToHost(ip, PORT);
         sock->open(QIODevice::ReadWrite);
     }
     else if (SOCKET_STATE) // Отключение клиентом
@@ -192,12 +183,12 @@ void PrivateChat::on_butt_connect_clicked() // Подключение клиен
     }
 }
 
-void PrivateChat::Sconnected()
+void PrivateChat::Sconnected() // слот обработки события подключения на стороне клиента
 {
     ui->textEdit1->setText(ui->textEdit1->toPlainText() + '\n' + "Пользователь найден. Ожидание подтверждения...");
 }
 
-void PrivateChat::Sdisconnected()
+void PrivateChat::Sdisconnected() // слот обработки события отключения на стороне клиента
 {
     sock->close();
     SOCKET_STATE = false;
@@ -229,15 +220,15 @@ void PrivateChat::readData() // Чтение на стороне клиента
     QString text;
     in >> text;
 
-    if (type == TCP_ACCETP)
+    if (type == TCP_ACCETP) // обработка принятого запроса от сервера
     {
         SOCKET_STATE = true;
         ui->textEdit1->setText(ui->textEdit1->toPlainText() + '\n' + "Соединение установлено!");
         ui->butt_connect->setStyleSheet(ui->butt_connect->styleSheet() + "background-color: rgb(85, 170, 255); color: white;");
         ui->line_ip->setEnabled(false);
-        ui->butt_connect->setText("оnline");
+        ui->butt_connect->setText("Online");
     }
-    else if (type == TCP_REJECT)
+    else if (type == TCP_REJECT) // обработка отклоненного запроса от сервера
     {
         ui->textEdit1->setText(ui->textEdit1->toPlainText() + '\n' + "Пользователь отклонил ваш запрос!");
     }
@@ -249,9 +240,15 @@ void PrivateChat::readData() // Чтение на стороне клиента
 
 }
 
-void PrivateChat::error()
+void PrivateChat::error() // слот обработки ошибок сокета
 {
-    qDebug() << sock->errorString();
+    QString err = sock->errorString();
+    qDebug() << err;
+    if (err == "Host not found")
+    {
+        ui->textEdit1->setText(ui->textEdit1->toPlainText() + '\n' + "Пользователь не найден!");
+    }
+
 }
 
 void PrivateChat::on_butt_sendMessage1_clicked() // Отправка личных сообщений
@@ -260,13 +257,13 @@ void PrivateChat::on_butt_sendMessage1_clicked() // Отправка личны�
     QString writeBuf = ui->line_message->text();
     QByteArray data = prepareData(nickname, writeBuf, PRIVATE);
 
-    if (SOCKET_STATE)
+    if (SOCKET_STATE) // отправка от лица клиента
     {
         sock->write(data);
         ui->line_message->setText("");
         ui->textEdit1->setText(buff + '\n' + "Вы" + ": " + writeBuf);
     }
-    else if (SClients.size())
+    else if (SClients.size()) // отправка от лица сервера
     {
         SClients.first()->write(data);
         ui->line_message->setText("");
@@ -275,13 +272,13 @@ void PrivateChat::on_butt_sendMessage1_clicked() // Отправка личны�
 }
 
 
-void PrivateChat::on_line_message_returnPressed()
+void PrivateChat::on_line_message_returnPressed() // отправка сообщений по enter
 {
     ui->butt_sendMessage1->click();
 }
 
 
-void PrivateChat::on_line_ip_returnPressed()
+void PrivateChat::on_line_ip_returnPressed() // подключение по enter
 {
     ui->butt_connect->click();
 }
